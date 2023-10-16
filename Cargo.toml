@@ -1,7 +1,16 @@
 [package]
 name = "beeziptoo"
 version = "0.0.0"
+authors = ["Andrew Halle <me@andrewhalle.dev>", "Randy Barlow <randy@electronsweatshop.com>"]
+license = "GPL-3.0"
+readme = "README.md"
+repository = "https://github.com/bowlofeggs/beeziptoo"
+documentation = "https://docs.rs/beeziptoo"
+description = "Yet another implementation of bzip2."
+keywords = []
+categories = []
 edition = "2021"
+rust-version = "1.66"
 
 [dependencies]
 thiserror = "1"
