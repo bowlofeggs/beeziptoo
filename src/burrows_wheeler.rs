@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, mem};
 
 /// Encode with the Burrows-Wheeler Transform.
 ///
@@ -32,12 +32,55 @@ pub(super) fn encode(data: &[u8]) -> Vec<u8> {
     output
 }
 
-pub(super) fn decode(data: &[u8]) -> Vec<u8> {
-    todo!()
+#[derive(Debug, thiserror::Error)]
+pub(super) enum DecodeError {
+    #[error("input must be at least 4 bytes")]
+    TooShort,
+    #[error("origin pointer out of range")]
+    InvalidOriginPointer,
+}
+
+/// Decode the Burrows-Wheeler transform.
+///
+/// # Notes
+///
+/// The origin pointer (index of original row in the sorted rotation block) is appended to the end of the
+/// input data as 3 little-endian bytes.
+pub(super) fn decode(data: &[u8]) -> Result<Vec<u8>, DecodeError> {
+    // ASSUMPTION it is valid for this to be empty
+    if data.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    if data.len() < 4 {
+        return Err(DecodeError::TooShort);
+    }
+
+    let (data, origin_pointer) = data.split_at(data.len() - 3);
+    let mut array = [0_u8; mem::size_of::<usize>()];
+    array[..3].copy_from_slice(origin_pointer);
+    // ASSUMPTION the origin pointer is encoded as little-endian
+    let origin_pointer = usize::from_le_bytes(array);
+
+    if origin_pointer > data.len() - 1 {
+        return Err(DecodeError::InvalidOriginPointer);
+    }
+
+    // TODO benchmark `Vec` instead of `VecDeque`.
+    let mut table: Vec<VecDeque<u8>> = vec![VecDeque::new(); data.len()];
+    for _ in 0..data.len() {
+        for (byte, row) in data.iter().zip(table.iter_mut()) {
+            row.push_front(*byte);
+        }
+        table.sort_unstable();
+    }
+
+    let output = table.swap_remove(origin_pointer);
+    Ok(output.into())
 }
 
 fn all_rotations(data: &[u8]) -> Vec<Vec<u8>> {
-    let mut deque: VecDeque<u8> = data.into_iter().copied().collect();
+    let mut deque: VecDeque<u8> = data.iter().copied().collect();
     let mut output = Vec::with_capacity(deque.len());
     for _ in 0..deque.len() {
         output.push(deque.iter().copied().collect());
@@ -50,6 +93,36 @@ fn all_rotations(data: &[u8]) -> Vec<Vec<u8>> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn roundtrip() {
+        let input = b"adlfjasldjfaslkfdsjaklsd";
+
+        let result = decode(&encode(input)).unwrap();
+
+        assert_eq!(input.as_slice(), result);
+    }
+
+    mod decode {
+        use super::*;
+
+        #[test]
+        fn small() {
+            let input = b"dabc\x02\x00\x00";
+
+            let decoded = decode(input).unwrap();
+
+            assert_eq!(decoded, b"cdab");
+        }
+
+        #[test]
+        fn too_small() {
+            let input = b"\x00";
+
+            let decoded = decode(input);
+
+            assert!(matches!(decoded, Err(DecodeError::TooShort)));
+        }
+    }
     mod encode {
         use super::*;
 
