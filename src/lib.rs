@@ -3,6 +3,7 @@
 //! Because we wanted to implement `bzip2`, too.
 use std::io::{self, Cursor, Read};
 
+mod burrows_wheeler;
 mod rle;
 
 /// These are the possible errors that can occur during compression.
