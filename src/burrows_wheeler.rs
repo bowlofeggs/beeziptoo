@@ -1,3 +1,4 @@
+//! Define the Burrows-Wheeler encode and decode steps.
 use std::{collections::VecDeque, mem};
 
 /// Encode with the Burrows-Wheeler Transform.
