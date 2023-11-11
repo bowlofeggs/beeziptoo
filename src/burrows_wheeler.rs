@@ -24,7 +24,7 @@ pub(super) fn encode(data: &[u8]) -> Vec<u8> {
         .into_iter()
         .map(|mut v| {
             v.pop()
-                .expect("presence of inner `Vec` means data was not empty")
+                .expect("presence of outer `Vec` means inner `Vec` was not empty")
         })
         .collect();
     // ASSUMPTION we're encoding the origin pointer as a little-endian index.
