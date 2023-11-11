@@ -126,6 +126,14 @@ mod tests {
 
             assert!(matches!(decoded, Err(DecodeError::TooShort)));
         }
+        
+        /// Test with empty data.
+        #[test]
+        fn empty() {
+            let decoded = decode(&[]);
+            
+            assert_eq!(decoded, &[]);
+        }
     }
     mod encode {
         use super::*;
