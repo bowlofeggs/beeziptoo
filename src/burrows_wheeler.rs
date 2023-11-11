@@ -27,7 +27,8 @@ pub(super) fn encode(data: &[u8]) -> Vec<u8> {
                 .expect("presence of outer `Vec` means inner `Vec` was not empty")
         })
         .collect();
-    // ASSUMPTION we're encoding the origin pointer as a little-endian index.
+    // Encode the origin pointer as a 24-bit unsigned little-endian integer.
+    // ASSUMPTION the origin pointer should be little-endian.
     output.extend_from_slice(&origin_pointer.to_le_bytes()[..3]);
 
     output
