@@ -1,9 +1,11 @@
+// Copyright ® 2023-2024 Andrew Halle and Randy Barlow
 //! beeziptoo
 //!
 //! Because we wanted to implement `bzip2`, too.
 use std::io::{self, Cursor, Read};
 
 mod burrows_wheeler;
+mod file_format;
 mod huffman;
 mod move_to_front;
 mod rle1;
@@ -29,12 +31,15 @@ pub enum DecompressError {
     /// An IO error occurred.
     #[error("I/O error: {0}")]
     IOError(io::Error),
+    /// Unable to parse the bzip2 stream.
+    #[error("Unable to parse the bzip2 stream: {0}")]
+    Parse(#[from] file_format::DecodeError),
     /// The runlength decoder encountered an invalid input.
     #[error("Failed to decode at a runlength step")]
     RunLengthDecode,
     /// The burrows-wheeler decoder encountered an invalid input.
     #[error("Failed to decode at a burrows-wheeler step")]
-    BurrowsWheelerDecode,
+    BurrowsWheelerDecode(#[from] burrows_wheeler::DecodeError),
     /// The huffman decoder encountered an invalid input.
     #[error("Failed to decode at a huffman code step")]
     HuffmanDecode,
@@ -52,12 +57,6 @@ impl From<rle1::Error> for DecompressError {
             rle1::Error::RunLengthInvalid(_) => DecompressError::RunLengthDecode,
             rle1::Error::RunLengthTruncated => DecompressError::RunLengthDecode,
         }
-    }
-}
-
-impl From<burrows_wheeler::DecodeError> for DecompressError {
-    fn from(_value: burrows_wheeler::DecodeError) -> Self {
-        DecompressError::BurrowsWheelerDecode
     }
 }
 
@@ -98,12 +97,10 @@ pub fn decompress<R>(mut data: R) -> Result<impl Read, DecompressError>
 where
     R: Read,
 {
-    let mut _all_data = vec![];
-    data.read_to_end(&mut _all_data)?;
+    let mut all_data = vec![];
+    data.read_to_end(&mut all_data)?;
 
-    // This is a stub to satisfy that huffman decoding needs a valid HuffmanCodeData. We need to
-    // put something here that can read a bzip file and produce this type.
-    let huffman_data = huffman::HuffmanCodedData::default();
+    let huffman_data = file_format::decode(&all_data)?;
     let un_huffman_data = huffman::decode(&huffman_data)?;
     let un_rle2 = rle2::decode(&un_huffman_data);
     let un_move_to_front_data = move_to_front::decode(&un_rle2);
@@ -113,4 +110,22 @@ where
     let cursor = Cursor::new(un_rle_data);
 
     Ok(cursor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_we_read() {
+        let bytes = std::fs::read("test.txt.bz2").expect("Cannot read test data");
+
+        let mut data = decompress(&bytes[..]).expect("Cannot decompress test data");
+
+        let mut buffer = vec![];
+        let bytes = data
+            .read_to_end(&mut buffer)
+            .expect("Cannot read decompressed data");
+        assert_eq!(buffer, b"Hello can you hear me?");
+    }
 }
