@@ -1,6 +1,12 @@
 // Copyright ® 2023-2024 Andrew Halle and Randy Barlow
 //! Read and write the bzip2 file format.
 
+// TODO remove
+#![allow(unused)]
+
+use std::io::Read;
+
+use self::bitstream::Bitstream;
 use crate::huffman::HuffmanCodedData;
 
 mod bitstream;
@@ -36,6 +42,112 @@ pub enum DecodeError {
     InvalidRandomizedField,
 }
 
+// = Parser ====================================================================
+
+struct Parser<R> {
+    bitstream: Bitstream<R>,
+}
+
+impl<R> Parser<R>
+where
+    R: Read,
+{
+    fn stream_header(&mut self) -> Result<StreamHeader, DecodeError> {
+        Ok(StreamHeader {
+            magic: self.header_magic()?,
+            version: self.version()?,
+            level: self.level()?,
+        })
+    }
+
+    fn header_magic(&mut self) -> Result<HeaderMagic, DecodeError> {
+        let header: u16 = self.bitstream.get_integer(16)?;
+        if header != 0x425a {
+            return Err(DecodeError::InvalidHeader);
+        }
+        Ok(HeaderMagic)
+    }
+
+    fn version(&mut self) -> Result<Version, DecodeError> {
+        let version: u8 = self.bitstream.get_integer(8)?;
+        if version != b'h' {
+            return Err(DecodeError::InvalidHeader);
+        }
+        Ok(Version)
+    }
+
+    fn level(&mut self) -> Result<Level, DecodeError> {
+        let level: u8 = self.bitstream.get_integer(8)?;
+        if level < b'1' || level > b'9' {
+            return Err(DecodeError::InvalidBlockSize);
+        }
+        Ok(Level(level - b'1' + 1))
+    }
+}
+
+// =============================================================================
+
+// = File format structs =======================================================
+
+struct BZipFile {
+    stream: BZipStream,
+}
+
+struct BZipStream {
+    header: StreamHeader,
+    block: Vec<StreamBlock>,
+    footer: StreamFooter,
+}
+
+struct StreamHeader {
+    magic: HeaderMagic,
+    version: Version,
+    level: Level,
+}
+
+struct StreamBlock {
+    header: BlockHeader,
+    trees: BlockTrees,
+    data: BlockData,
+}
+
+struct BlockHeader {
+    magic: BlockMagic,
+    crc: BlockCrc,
+    randomized: Randomized,
+    orig_ptr: OriginPointer,
+}
+
+struct BlockTrees {
+    sym_map: SymbolMap,
+    trees: Vec<Tree>,
+    selectors: Vec<Selector>,
+}
+
+struct StreamFooter {
+    magic: FooterMagic,
+    crc: StreamCrc,
+    padding: Padding,
+}
+
+struct Level(u8);
+
+struct HeaderMagic;
+struct Version;
+struct BlockMagic;
+struct BlockCrc;
+struct Randomized;
+struct OriginPointer;
+struct SymbolMap;
+struct Tree;
+struct Selector;
+struct BlockData;
+struct FooterMagic;
+struct StreamCrc;
+struct Padding;
+
+// =============================================================================
+
 pub fn decode(bytes: &[u8]) -> Result<HuffmanCodedData, DecodeError> {
     let bytes = validate_header(bytes)?;
     let (block_size, bytes) = block_size(bytes)?;
@@ -50,6 +162,8 @@ pub fn decode(bytes: &[u8]) -> Result<HuffmanCodedData, DecodeError> {
         Some(bitstream::Bit::One) => return Err(DecodeError::InvalidRandomizedField),
         None => return Err(DecodeError::UnexpectedEof),
     };
+
+    let origin_pointer: u32 = stream.get_integer(24)?;
 
     Ok(HuffmanCodedData::default())
 }

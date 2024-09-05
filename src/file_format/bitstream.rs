@@ -26,31 +26,40 @@ trait FromBits {
     fn from_bits(value: &[Bit]) -> Self;
 }
 
-impl FromBits for u32 {
-    fn from_bits(value: &[Bit]) -> Self {
-        assert!(
-            value.len() <= 32,
-            "Cannot convert {} bits into a u32",
-            value.len()
-        );
+macro_rules! impl_from_bits {
+    ($kind:ty, $size:expr) => {
+        impl FromBits for $kind {
+            fn from_bits(value: &[Bit]) -> Self {
+                assert!(
+                    value.len() <= $size,
+                    concat!("Cannot convert {} bits into a ", stringify!($kind)),
+                    value.len()
+                );
 
-        let mut x = 0;
-        for bit in value {
-            x = x << 1;
+                let mut x = 0;
+                for bit in value {
+                    x = x << 1;
 
-            match bit {
-                Bit::Zero => {
-                    // Nothing to do
+                    match bit {
+                        Bit::Zero => {
+                            // Nothing to do
+                        }
+                        Bit::One => {
+                            x = x | 1;
+                        }
+                    }
                 }
-                Bit::One => {
-                    x = x | 1;
-                }
+
+                x
             }
         }
-
-        x
-    }
+    };
 }
+
+impl_from_bits!(u8, 8);
+impl_from_bits!(u16, 16);
+impl_from_bits!(u32, 32);
+impl_from_bits!(u64, 64);
 
 impl<R> Bitstream<R>
 where
