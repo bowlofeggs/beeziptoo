@@ -91,6 +91,8 @@ where
     }
 
     pub(super) fn get_next_bit(&mut self) -> io::Result<Option<Bit>> {
+        dbg!(self.buffer_pointer);
+        dbg!(self.buffer_size);
         if self.buffer_pointer == self.buffer_size {
             debug_assert_eq!(self.bit_pointer, 7);
             self.buffer_size = self.inner.read(&mut self.buffer[..])?.try_into().unwrap();
@@ -115,6 +117,47 @@ where
         }
 
         Ok(Some(bit))
+    }
+
+    /// Get the padding bits from the end of the stream.
+    ///
+    /// This function will read between 0 and 7 of the last bits at the current byte, but will not
+    /// advance the buffer_pointer. This non-advancement is important so that [is_empty] can
+    /// correctly detect if we examined all the bytes or not.
+    pub(super) fn get_padding(&mut self) -> Vec<Bit> {
+        let bits_to_read = 8 - self.bit_pointer;
+        dbg!(bits_to_read);
+        dbg!(self.bit_pointer);
+        dbg!(self.buffer_pointer);
+
+        if bits_to_read == 0 {
+            return vec![];
+        }
+
+        (0..bits_to_read)
+            .map(|_| {
+                self.get_next_bit()
+                    .expect("We should not need to read when calling this")
+                    .ok_or(())
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .expect("All bits should have been Some but they were not")
+    }
+
+    /// Return `true` if there are no bits that haven't been consumed.
+    ///
+    /// This is used by tests to assert that the entire file was processed.
+    pub(super) fn is_empty(&mut self) -> io::Result<bool> {
+        Ok(self.get_next_bit()?.is_none())
+    }
+}
+
+impl<R> From<R> for Bitstream<R>
+where
+    R: Read,
+{
+    fn from(value: R) -> Self {
+        Bitstream::new(value)
     }
 }
 
