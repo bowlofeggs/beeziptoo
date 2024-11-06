@@ -13,4 +13,4 @@ edition = "2021"
 rust-version = "1.67"
 
 [dependencies]
-thiserror = "1"
+thiserror = "2"
