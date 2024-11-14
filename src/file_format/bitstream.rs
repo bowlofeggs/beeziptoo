@@ -7,16 +7,18 @@ pub(super) enum Bit {
     One,
 }
 
+const BUFFER_SIZE: usize = 512;
+
 /// An adapter over a reader that turns a byte slice into an iterator of bits.
 pub(super) struct Bitstream<R> {
     /// The reader.
     inner: R,
     /// The bytes we've read which still need handling.
-    buffer: Box<[u8; 512]>,
+    buffer: Box<[u8; BUFFER_SIZE]>,
     /// The number of bytes that we have in the buffer.
-    buffer_size: u16,
+    buffer_size: usize,
     /// The index of the byte we're about to handle.
-    buffer_pointer: u16,
+    buffer_pointer: usize,
     /// The index of the bit that we are about to handle.
     // This pointer views bit 0 as the rightmost bit and bit 7 as the leftmost bit.
     bit_pointer: u8,
@@ -93,8 +95,7 @@ where
     pub(super) fn get_next_bit(&mut self) -> io::Result<Option<Bit>> {
         if self.buffer_pointer == self.buffer_size {
             debug_assert_eq!(self.bit_pointer, 7);
-            self.buffer_size = self.inner.read(&mut self.buffer[..])?.try_into().unwrap();
-            self.buffer_pointer = 0;
+            self.shift_and_read()?;
         }
 
         if self.buffer_size == 0 {
@@ -115,6 +116,16 @@ where
         }
 
         Ok(Some(bit))
+    }
+
+    fn shift_and_read(&mut self) -> io::Result<()> {
+        self.buffer
+            .copy_within(self.buffer_pointer..self.buffer_size, 0);
+        self.buffer_size = self.buffer_size - self.buffer_pointer;
+        self.buffer_pointer = 0;
+        self.buffer_size += self.inner.read(&mut self.buffer[self.buffer_size..])?;
+
+        Ok(())
     }
 
     /// Get the padding bits from the end of the stream.
@@ -202,6 +213,8 @@ mod tests {
         let value: u32 = bitstream.get_integer(24).expect("This should fit in a u32");
 
         assert_eq!(value, 0x7474);
+        assert_eq!(bitstream.bit_pointer, 7);
+        assert_eq!(bitstream.buffer_pointer, 3);
     }
 
     #[test]
@@ -215,5 +228,54 @@ mod tests {
             bitstream.get_padding(),
             &[Bit::One, Bit::Zero, Bit::One, Bit::Zero]
         );
+        assert_eq!(bitstream.bit_pointer, 7);
+        assert_eq!(bitstream.buffer_pointer, 1);
+    }
+
+    /// Test the shift_and_read() method.
+    mod shift_and_read {
+        use super::*;
+
+        /// Test when we are on the very last byte already.
+        #[test]
+        fn last_byte() {
+            let input: Vec<u8> = (0..BUFFER_SIZE * 2).map(|v| (v % 256) as u8).collect();
+            let mut bitstream = Bitstream::new(input.as_slice());
+            // Let's set the state such that we have read all but the last byte in the buffer.
+            (0..BUFFER_SIZE - 1)
+                .map(|_| bitstream.get_integer::<u8>(8))
+                .collect::<Vec<_>>();
+            // Let's also leave the bit pointer in a more exicing position than 0.
+            let _: u8 = bitstream.get_integer(3).unwrap();
+
+            // Now let's ask it to shift and read, which should move that integer to the front and
+            // should refill the buffer.
+            bitstream.shift_and_read().unwrap();
+
+            assert_eq!(bitstream.buffer[..4], [255, 0, 1, 2]);
+            assert_eq!(bitstream.bit_pointer, 4);
+            assert_eq!(bitstream.buffer_pointer, 0);
+        }
+
+        /// Test when we are on the third-to-last byte.
+        #[test]
+        fn third_to_last_byte() {
+            let input: Vec<u8> = (0..BUFFER_SIZE * 2).map(|v| (v % 256) as u8).collect();
+            let mut bitstream = Bitstream::new(input.as_slice());
+            // Let's set the state such that we have read all but the last byte in the buffer.
+            (0..BUFFER_SIZE - 3)
+                .map(|_| bitstream.get_integer::<u8>(8))
+                .collect::<Vec<_>>();
+            // Let's also leave the bit pointer in a more exicing position than 0.
+            let _: u8 = bitstream.get_integer(4).unwrap();
+
+            // Now let's ask it to shift and read, which should move that integer to the front and
+            // should refill the buffer.
+            bitstream.shift_and_read().unwrap();
+
+            assert_eq!(bitstream.buffer[..4], [253, 254, 255, 0]);
+            assert_eq!(bitstream.bit_pointer, 3);
+            assert_eq!(bitstream.buffer_pointer, 0);
+        }
     }
 }

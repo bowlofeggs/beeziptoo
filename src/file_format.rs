@@ -65,6 +65,18 @@ where
         }
     }
 
+    fn blocks(&mut self) -> Result<Vec<StreamBlock>, DecodeError> {
+        let mut blocks = vec![];
+
+        /*
+        while let Some(block) = self.next_block()? {
+            blocks.push(block);
+        }
+        */
+
+        Ok(blocks)
+    }
+
     fn parse(mut self) -> Result<BZipFile, DecodeError> {
         let stream = self.stream()?;
 
@@ -78,7 +90,7 @@ where
 
     fn stream(&mut self) -> Result<BZipStream, DecodeError> {
         let header = self.stream_header()?;
-        let blocks = vec![];
+        let blocks = self.blocks()?;
         let footer = self.stream_footer()?;
 
         Ok(BZipStream {
@@ -153,6 +165,10 @@ where
         }
 
         Ok(Level(level - b'1' + 1))
+    }
+
+    fn next_block(&mut self) -> Result<Option<StreamBlock>, DecodeError> {
+        todo!()
     }
 }
 
