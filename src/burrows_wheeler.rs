@@ -29,6 +29,8 @@ pub(super) fn encode(data: &[u8]) -> Vec<u8> {
         .collect();
     // Encode the origin pointer as a 24-bit unsigned little-endian integer.
     // ASSUMPTION the origin pointer should be little-endian.
+    // TODO: We're pretty sure that the spec indicates origin pointer ought to be big endian, but
+    // we haven't fixed it yet.
     output.extend_from_slice(&origin_pointer.to_le_bytes()[..3]);
 
     output

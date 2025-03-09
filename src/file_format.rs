@@ -6,6 +6,8 @@
 
 use std::io::{self, ErrorKind, Read};
 
+use bitstream::Bit;
+
 use self::bitstream::Bitstream;
 use crate::huffman::HuffmanCodedData;
 
@@ -40,6 +42,10 @@ pub enum DecodeError {
     /// it was 1, which is unexpected.
     #[error("The Randomized field should be 0, but was 1.")]
     InvalidRandomizedField,
+
+    /// Invalid `Selector`.
+    #[error("The selector should be a zero-terminated string of length at most 6")]
+    InvalidSelector,
 }
 
 impl DecodeError {
@@ -67,6 +73,9 @@ where
         }
     }
 
+    // TODO: Should this return an iterator over blocks instead of a `Vec<StreamBlock>`.
+    //
+    // This is one of the things that precludes us from streaming the file.
     fn blocks(&mut self) -> Result<Vec<StreamBlock>, DecodeError> {
         let mut blocks = vec![];
 
@@ -174,7 +183,104 @@ where
             return Ok(None);
         }
 
-        todo!("We need to read the next block so we can be cool")
+        let header = self.block_header()?;
+        let trees = self.block_trees()?;
+        let data = self.block_data()?;
+
+        Ok(Some(StreamBlock {
+            header,
+            trees,
+            data,
+        }))
+    }
+
+    fn block_header(&mut self) -> Result<BlockHeader, DecodeError> {
+        let magic = self.bitstream.get_integer(48)?;
+        let crc = self.bitstream.get_integer(32)?;
+        let randomized = self.bitstream.get_integer(1)?;
+        let origin_pointer = self.bitstream.get_integer(24)?;
+
+        if randomized != 0 {
+            return Err(DecodeError::InvalidRandomizedField);
+        }
+
+        Ok(BlockHeader {
+            magic: BlockMagic(magic),
+            crc: BlockCrc(crc),
+            randomized: Randomized(randomized),
+            orig_ptr: OriginPointer(origin_pointer),
+        })
+    }
+
+    fn symbol_map(&mut self) -> Result<SymbolMap, DecodeError> {
+        let l1: u16 = self.bitstream.get_integer(16)?;
+        let mut l2 = vec![];
+
+        {
+            let mut l1 = l1.reverse_bits();
+            while l1 != 0 {
+                if l1 % 2 != 0 {
+                    l2.push(self.bitstream.get_integer(16)?);
+                }
+                l1 >>= 1;
+            }
+        }
+
+        Ok(SymbolMap { l1, l2 })
+    }
+
+    fn tree(&mut self) -> Result<Tree, DecodeError> {
+        // TODONEXT: Parse a single tree.
+        todo!()
+    }
+
+    fn selector(&mut self) -> Result<Selector, DecodeError> {
+        const MAX_SELECTOR_BITS: u8 = 6;
+
+        let mut bits = vec![];
+
+        for i in 0..MAX_SELECTOR_BITS {
+            let bit = self.bitstream.get_next_bit()?;
+
+            if bit == Bit::Zero {
+                break;
+            }
+
+            if i == MAX_SELECTOR_BITS - 1 {
+                return Err(DecodeError::InvalidSelector);
+            }
+
+            bits.push(bit);
+        }
+
+        Ok(Selector(bits.len() as u8))
+    }
+
+    fn block_trees(&mut self) -> Result<BlockTrees, DecodeError> {
+        let sym_map = self.symbol_map()?;
+
+        let num_trees: u8 = self.bitstream.get_integer(3)?;
+        let num_selectors: u16 = self.bitstream.get_integer(15)?;
+
+        let mut selectors = vec![];
+        for _ in 0..num_selectors {
+            selectors.push(self.selector()?);
+        }
+
+        let mut trees = vec![];
+        for _ in 0..num_trees {
+            trees.push(self.tree()?);
+        }
+
+        Ok(BlockTrees {
+            sym_map,
+            trees,
+            selectors,
+        })
+    }
+
+    fn block_data(&mut self) -> Result<BlockData, DecodeError> {
+        todo!()
     }
 }
 
@@ -236,23 +342,32 @@ struct StreamFooter {
 struct Level(u8);
 
 #[derive(Debug)]
+struct BlockMagic(u64);
+
+#[derive(Debug)]
+struct BlockCrc(u32);
+
+#[derive(Debug)]
+struct Randomized(u8);
+
+#[derive(Debug)]
+struct OriginPointer(u32);
+
+#[derive(Debug)]
+struct SymbolMap {
+    l1: u16,
+    l2: Vec<u16>,
+}
+
+#[derive(Debug)]
+struct Selector(u8);
+
+#[derive(Debug)]
 struct HeaderMagic;
 #[derive(Debug)]
 struct Version;
 #[derive(Debug)]
-struct BlockMagic;
-#[derive(Debug)]
-struct BlockCrc;
-#[derive(Debug)]
-struct Randomized;
-#[derive(Debug)]
-struct OriginPointer;
-#[derive(Debug)]
-struct SymbolMap;
-#[derive(Debug)]
 struct Tree;
-#[derive(Debug)]
-struct Selector;
 #[derive(Debug)]
 struct BlockData;
 #[derive(Debug)]
