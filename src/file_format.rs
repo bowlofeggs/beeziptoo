@@ -1,4 +1,4 @@
-// Copyright ® 2023-2024 Andrew Halle and Randy Barlow
+// Copyright ® 2023-2025 Andrew Halle and Randy Barlow
 //! Read and write the bzip2 file format.
 
 // TODO remove
@@ -46,6 +46,10 @@ pub enum DecodeError {
     /// Invalid `Selector`.
     #[error("The selector should be a zero-terminated string of length at most 6")]
     InvalidSelector,
+
+    /// Invalid `Tree`.
+    #[error("The tree data structure could not be deserialized")]
+    InvalidTree,
 }
 
 impl DecodeError {
@@ -229,9 +233,32 @@ where
         Ok(SymbolMap { l1, l2 })
     }
 
-    fn tree(&mut self) -> Result<Tree, DecodeError> {
-        // TODONEXT: Parse a single tree.
-        todo!()
+    /// Parse a single tree.
+    // TODO: Test this
+    fn tree(&mut self, num_symbols: u16) -> Result<Tree, DecodeError> {
+        let mut tree = vec![];
+        let mut initial_bit_length: u8 = self.bitstream.get_integer(5)?;
+
+        for _ in 0..num_symbols {
+            while self.bitstream.peek_integer::<u8>(1)? == 1 {
+                let delta: u8 = self.bitstream.get_integer(2)?;
+                match delta {
+                    2 => initial_bit_length += 1,
+                    3 => initial_bit_length -= 1,
+                    _ => unreachable!(),
+                }
+            }
+
+            let terminator: u8 = self.bitstream.get_integer(1)?;
+            if terminator != 0 {
+                return Err(DecodeError::InvalidTree);
+            }
+
+            tree.push(initial_bit_length);
+        }
+
+        // The code that goes with these lengths is defined in https://www.ietf.org/rfc/rfc1951.txt
+        Ok(Tree(tree))
     }
 
     fn selector(&mut self) -> Result<Selector, DecodeError> {
@@ -258,6 +285,7 @@ where
 
     fn block_trees(&mut self) -> Result<BlockTrees, DecodeError> {
         let sym_map = self.symbol_map()?;
+        let num_symbols = sym_map.num_symbols();
 
         let num_trees: u8 = self.bitstream.get_integer(3)?;
         let num_selectors: u16 = self.bitstream.get_integer(15)?;
@@ -269,7 +297,7 @@ where
 
         let mut trees = vec![];
         for _ in 0..num_trees {
-            trees.push(self.tree()?);
+            trees.push(self.tree(num_symbols)?);
         }
 
         Ok(BlockTrees {
@@ -280,6 +308,7 @@ where
     }
 
     fn block_data(&mut self) -> Result<BlockData, DecodeError> {
+        // TODONEXT: Figure out how long the block data is
         todo!()
     }
 }
@@ -359,15 +388,24 @@ struct SymbolMap {
     l2: Vec<u16>,
 }
 
+impl SymbolMap {
+    // TODO test this
+    fn num_symbols(&self) -> u16 {
+        // The spec says that num_syms is num_stack + 2
+        self.l2.iter().map(u16::count_ones).sum() + 2
+    }
+}
+
 #[derive(Debug)]
 struct Selector(u8);
+
+#[derive(Debug)]
+struct Tree(Vec<u8>);
 
 #[derive(Debug)]
 struct HeaderMagic;
 #[derive(Debug)]
 struct Version;
-#[derive(Debug)]
-struct Tree;
 #[derive(Debug)]
 struct BlockData;
 #[derive(Debug)]
