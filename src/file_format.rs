@@ -392,7 +392,7 @@ impl SymbolMap {
     // TODO test this
     fn num_symbols(&self) -> u16 {
         // The spec says that num_syms is num_stack + 2
-        self.l2.iter().map(u16::count_ones).sum() + 2
+        (self.l2.iter().map(|v| v.count_ones()).sum::<u32>() + 2) as u16
     }
 }
 

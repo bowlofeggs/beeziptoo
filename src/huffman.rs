@@ -211,6 +211,162 @@ mod tree {
             symbol_bitmap
         }
     }
+
+    impl From<Vec<u8>> for Tree {
+        fn from(value: Vec<u8>) -> Self {
+            todo!()
+        }
+    }
+
+    /// <https://en.wikipedia.org/wiki/Canonical_Huffman_code#Pseudocode>
+    fn canonical_huffman_table(symbol_lengths: &[u8]) -> SymbolBitMap {
+        debug_assert!(
+            symbol_lengths.len() >= 1,
+            "symbol_lengths must have at least one item"
+        );
+        let mut sorted_values = symbol_lengths.to_owned();
+        sorted_values.sort_by_key(|&v| Reverse(v));
+        let mut code = 0;
+        // This maps a length to a list of codes that go with that length
+        let mut code_map: HashMap<u8, Vec<Vec<bool>>> = HashMap::new();
+
+        let mut len = sorted_values.pop().expect("This must be at least one");
+        code_map.insert(len, vec![vec![false; len.into()]]);
+
+        for sorted_value in sorted_values.into_iter().rev() {
+            code = (code + 1) << (sorted_value - len);
+
+            let entry = code_map.entry(sorted_value).or_default();
+
+            entry.push(code_to_bitvec(code, sorted_value));
+
+            len = sorted_value;
+        }
+
+        let mut symbol_bit_map = SymbolBitMap::default();
+
+        for (symbol, length) in symbol_lengths.iter().enumerate() {
+            let entry = code_map.get_mut(length).expect("We just built this");
+
+            let symbol = match symbol {
+                0 => Symbol::RunA,
+                1 => Symbol::RunB,
+                idx if idx < symbol_lengths.len() - 1 => Symbol::Byte((idx - 1) as u16),
+                _ => Symbol::Eob,
+            };
+
+            symbol_bit_map.insert(symbol, entry.remove(0));
+        }
+
+        symbol_bit_map
+    }
+
+    /// Convert a huffman code to a bitvec of the given length
+    fn code_to_bitvec(mut code: u64, len: u8) -> Vec<bool> {
+        let mut bitmap = vec![];
+
+        for _ in 0..len {
+            if code % 2 == 0 {
+                bitmap.push(false);
+            } else {
+                bitmap.push(true);
+            }
+
+            code >>= 1;
+        }
+        bitmap.reverse();
+
+        bitmap
+    }
+
+    mod tests {
+        use super::*;
+
+        /// Test [`canonical_huffman_table`].
+        mod test_canonical_huffman_table {
+            use super::*;
+
+            /// Use an example from A.2.3 in the PDF
+            #[test]
+            fn example_1() {
+                let symbol_lengths = [
+                    2, 5, 4, 5, 6, 5, 5, 4, 9, 5, 5, 5, 4, 5, 4, 5, 9, 4, 8, 5, 4, 5, 8, 8,
+                ];
+
+                let table = canonical_huffman_table(&symbol_lengths);
+
+                assert_eq!(table.get(&Symbol::RunA).unwrap(), &[false, false]);
+                assert_eq!(
+                    table.get(&Symbol::RunB).unwrap(),
+                    &[true, false, true, false, false]
+                );
+                assert_eq!(
+                    table.get(&Symbol::Byte(4)).unwrap(),
+                    &[true, false, true, true, false]
+                );
+                assert_eq!(table.get(&Symbol::Byte(15)).unwrap(), &[true; 9]);
+                assert_eq!(
+                    table.get(&Symbol::Byte(17)).unwrap(),
+                    &[true, true, true, true, true, true, false, false]
+                );
+                assert_eq!(
+                    table.get(&Symbol::Eob).unwrap(),
+                    &[true, true, true, true, true, true, true, false]
+                );
+            }
+
+            /// TODONEXT: Encode the other example as a test
+            #[test]
+            fn example_2() {
+                todo!()
+            }
+        }
+
+        /// Test [`code_to_bitvec`].
+        mod test_code_to_bitvec {
+            use super::*;
+
+            /// Convert code 0 of length 2
+            #[test]
+            fn code_0_2() {
+                let bv = code_to_bitvec(0, 2);
+
+                assert_eq!(bv, [false, false]);
+            }
+
+            /// Convert code 4 of length 4
+            #[test]
+            fn code_4_4() {
+                let bv = code_to_bitvec(4, 4);
+
+                assert_eq!(bv, [false, true, false, false]);
+            }
+
+            /// Convert code 20 of length 5
+            #[test]
+            fn code_20_5() {
+                let bv = code_to_bitvec(20, 5);
+
+                assert_eq!(bv, [true, false, true, false, false]);
+            }
+
+            /// Convert code 21 of length 5
+            #[test]
+            fn code_21_5() {
+                let bv = code_to_bitvec(21, 5);
+
+                assert_eq!(bv, [true, false, true, false, true]);
+            }
+
+            /// Convert code 511 of length 9
+            #[test]
+            fn code_511_9() {
+                let bv = code_to_bitvec(511, 9);
+
+                assert_eq!(bv, [true; 9]);
+            }
+        }
+    }
 }
 
 /// Encode RLE `Symbol`s into Huffman tables.
