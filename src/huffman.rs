@@ -56,7 +56,7 @@ impl From<&Symbol> for rle2::Symbol {
     }
 }
 
-mod tree {
+pub(crate) mod tree {
     use super::*;
 
     use std::cmp::Reverse;
@@ -88,14 +88,14 @@ mod tree {
     }
 
     #[derive(Debug)]
-    pub(super) struct Tree {
+    pub(crate) struct Tree {
         root: NodeIdx,
         nodes: Vec<Node>,
         symbol_bitmap: SymbolBitMap,
     }
 
     impl Tree {
-        pub(super) fn new(symbol_weights: HashMap<Symbol, usize>) -> Self {
+        pub(crate) fn new(symbol_weights: HashMap<Symbol, usize>) -> Self {
             let mut nodes: Vec<Node> = Vec::new();
             let mut priority_queue: BinaryHeap<_> = symbol_weights
                 .iter()
@@ -135,7 +135,7 @@ mod tree {
             }
         }
 
-        pub(super) fn encode(&self, symbols: &[rle2::Symbol]) -> Vec<u8> {
+        pub(crate) fn encode(&self, symbols: &[rle2::Symbol]) -> Vec<u8> {
             let mut bitvec = Vec::new();
 
             for symbol in symbols {
@@ -149,7 +149,19 @@ mod tree {
             bitvec
         }
 
-        pub(super) fn decode(&self, mut input: &[u8]) -> Result<Vec<Symbol>, Error> {
+        // TODONEXT: The `decode()` function below takes a &[u8] (where bytes are really bits) and
+        // returns a `Vec<Symbol>`. This is an impossible function signature because when we are
+        // parsing block data, we don't know we're done until we hit the Eob symbol.
+        //
+        // Instead, we need to be able to give a `BitReader` to the tree and have it pull bits out
+        // of the bitreader until it reaches a symbol. Something like the below signature.
+        //
+        // pub(crate) fn decode(&self, bits: &mut BitReader) -> Result<Symbol, Error> {}
+        //
+        // This function might not be implemented here but instead over in the file format module
+        // (maybe).
+
+        pub(crate) fn decode(&self, mut input: &[u8]) -> Result<Vec<Symbol>, Error> {
             let mut symbols = Vec::new();
             let mut location = self.root;
 
@@ -212,9 +224,113 @@ mod tree {
         }
     }
 
-    impl From<Vec<u8>> for Tree {
-        fn from(value: Vec<u8>) -> Self {
-            todo!()
+    #[derive(Debug)]
+    pub(crate) struct InvalidBitmap;
+
+    impl TryFrom<Vec<u8>> for Tree {
+        type Error = InvalidBitmap;
+
+        fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+            let symbol_bitmap = canonical_huffman_table(&value);
+            symbol_bitmap.try_into()
+        }
+    }
+
+    impl TryFrom<SymbolBitMap> for Tree {
+        type Error = InvalidBitmap;
+        fn try_from(symbol_bitmap: SymbolBitMap) -> Result<Self, Self::Error> {
+            #[derive(Debug, Copy, Clone)]
+            enum TempNode {
+                Branch(Option<NodeIdx>, Option<NodeIdx>),
+                Leaf(Symbol),
+            }
+
+            impl Default for TempNode {
+                fn default() -> Self {
+                    TempNode::Branch(None, None)
+                }
+            }
+
+            impl TryFrom<TempNode> for Node {
+                type Error = InvalidBitmap;
+
+                fn try_from(value: TempNode) -> Result<Self, Self::Error> {
+                    let node = match value {
+                        TempNode::Branch(Some(left), Some(right)) => Node::Branch(left, right),
+                        TempNode::Leaf(symbol) => Node::Leaf(symbol),
+                        _ => return Err(InvalidBitmap),
+                    };
+
+                    Ok(node)
+                }
+            }
+
+            let mut nodes = vec![TempNode::default()];
+            let root = NodeIdx(0);
+
+            for (symbol, path) in &symbol_bitmap {
+                if path.is_empty() {
+                    return Err(InvalidBitmap);
+                }
+
+                nodes.push(TempNode::Leaf(*symbol));
+                let node_idx = NodeIdx(nodes.len() - 1);
+
+                let mut curr = root;
+                // We chop off the last bit here because all the nodes we deal with in this loop
+                // ought to be branches. The last bit should end us up on a node that is a leaf
+                // node (the node we created above) so we handle that separately.
+                for bit in &path[..path.len() - 1] {
+                    // We want to work on a copy of the node so that we don't borrow all nodes
+                    // mutably. We need to do this because we might need to push a new node in the
+                    // case that we encounter a branch node that hasn't been created yet.
+                    let old_idx = curr.0;
+                    let mut node = nodes[old_idx];
+                    match &mut node {
+                        TempNode::Leaf(_) => return Err(InvalidBitmap),
+                        TempNode::Branch(_, Some(right)) if *bit => {
+                            curr = *right;
+                        }
+                        TempNode::Branch(Some(left), _) if !bit => {
+                            curr = *left;
+                        }
+                        TempNode::Branch(left, right) => {
+                            nodes.push(TempNode::default());
+                            let node_idx = NodeIdx(nodes.len() - 1);
+                            curr = node_idx;
+                            if *bit {
+                                *right = Some(node_idx);
+                            } else {
+                                *left = Some(node_idx);
+                            }
+                        }
+                    }
+                    // Here we put the copy of the node that we mutated back in `nodes`.
+                    nodes[old_idx] = node;
+                }
+
+                let node = &mut nodes[curr.0];
+                // We returned an error early if `path` was empty.
+                match (node, path.last().unwrap()) {
+                    (TempNode::Leaf(_), _) => return Err(InvalidBitmap),
+                    (TempNode::Branch(left, right), bit) => {
+                        if *bit {
+                            *right = Some(node_idx);
+                        } else {
+                            *left = Some(node_idx);
+                        }
+                    }
+                }
+            }
+
+            Ok(Tree {
+                root,
+                nodes: nodes
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<Node>, InvalidBitmap>>()?,
+                symbol_bitmap,
+            })
         }
     }
 
@@ -282,6 +398,57 @@ mod tree {
     mod tests {
         use super::*;
 
+        mod test_try_from_vec {
+            use super::*;
+
+            #[test]
+            fn simple() {
+                let symbol_bitmap: SymbolBitMap =
+                    [(Symbol::RunA, vec![false]), (Symbol::RunB, vec![true])]
+                        .into_iter()
+                        .collect();
+                let tree: Tree = symbol_bitmap.try_into().unwrap();
+
+                assert_eq!(tree.nodes.len(), 3);
+                match tree.nodes[tree.root.0] {
+                    Node::Branch(left, right) => {
+                        let left = &tree.nodes[left.0];
+                        let right = &tree.nodes[right.0];
+                        match (left, right) {
+                            (Node::Leaf(Symbol::RunA), Node::Leaf(Symbol::RunB)) => {}
+                            _ => panic!("nodes should be the correct symbols"),
+                        }
+                    }
+                    _ => panic!("root should be a branch"),
+                }
+            }
+
+            #[test]
+            fn example_1() {
+                let symbol_lengths = vec![
+                    2, 5, 4, 5, 6, 5, 5, 4, 9, 5, 5, 5, 4, 5, 4, 5, 9, 4, 8, 5, 4, 5, 8, 8,
+                ];
+
+                let tree: Tree = symbol_lengths.try_into().unwrap();
+
+                assert_eq!(tree.decode(&[0, 0]).unwrap(), vec![Symbol::RunA]);
+                assert_eq!(tree.decode(&[1, 0, 1, 0, 0]).unwrap(), vec![Symbol::RunB]);
+                assert_eq!(
+                    tree.decode(&[1, 0, 1, 1, 0]).unwrap(),
+                    vec![Symbol::Byte(4)]
+                );
+                assert_eq!(tree.decode(&[1; 9]).unwrap(), vec![Symbol::Byte(15)]);
+                assert_eq!(
+                    tree.decode(&[1, 1, 1, 1, 1, 1, 0, 0]).unwrap(),
+                    vec![Symbol::Byte(17)]
+                );
+                assert_eq!(
+                    tree.decode(&[1, 1, 1, 1, 1, 1, 1, 0]).unwrap(),
+                    vec![Symbol::Eob]
+                );
+            }
+        }
+
         /// Test [`canonical_huffman_table`].
         mod test_canonical_huffman_table {
             use super::*;
@@ -318,7 +485,33 @@ mod tree {
             /// TODONEXT: Encode the other example as a test
             #[test]
             fn example_2() {
-                todo!()
+                let symbol_lengths = [
+                    1, 4, 5, 5, 6, 10, 4, 10, 10, 5, 10, 10, 10, 10, 4, 10, 9, 9, 9, 4, 9, 5, 4, 5,
+                ];
+
+                let table = canonical_huffman_table(&symbol_lengths);
+
+                assert_eq!(table.get(&Symbol::RunA).unwrap(), &[false]);
+                assert_eq!(
+                    table.get(&Symbol::RunB).unwrap(),
+                    &[true, false, false, false]
+                );
+                assert_eq!(
+                    table.get(&Symbol::Byte(4)).unwrap(),
+                    &[true, true, true, true, true, true, true, false, false, false]
+                );
+                assert_eq!(
+                    table.get(&Symbol::Byte(15)).unwrap(),
+                    &[true, true, true, true, true, true, false, false, false,]
+                );
+                assert_eq!(
+                    table.get(&Symbol::Byte(17)).unwrap(),
+                    &[true, true, true, true, true, true, false, true, false]
+                );
+                assert_eq!(
+                    table.get(&Symbol::Eob).unwrap(),
+                    &[true, true, true, true, false]
+                );
             }
         }
 

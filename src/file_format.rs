@@ -9,7 +9,7 @@ use std::io::{self, ErrorKind, Read};
 use bitstream::Bit;
 
 use self::bitstream::Bitstream;
-use crate::huffman::HuffmanCodedData;
+use crate::huffman::{self, tree::Tree, HuffmanCodedData};
 
 mod bitstream;
 
@@ -55,6 +55,12 @@ pub enum DecodeError {
 impl DecodeError {
     fn unexpected_eof(msg: &'static str) -> Self {
         Self::IOError(io::Error::new(ErrorKind::UnexpectedEof, msg))
+    }
+}
+
+impl From<huffman::tree::InvalidBitmap> for DecodeError {
+    fn from(value: huffman::tree::InvalidBitmap) -> Self {
+        DecodeError::InvalidTree
     }
 }
 
@@ -236,7 +242,7 @@ where
     /// Parse a single tree.
     // TODO: Test this
     fn tree(&mut self, num_symbols: u16) -> Result<Tree, DecodeError> {
-        let mut tree = vec![];
+        let mut bit_lengths = vec![];
         let mut initial_bit_length: u8 = self.bitstream.get_integer(5)?;
 
         for _ in 0..num_symbols {
@@ -254,11 +260,11 @@ where
                 return Err(DecodeError::InvalidTree);
             }
 
-            tree.push(initial_bit_length);
+            bit_lengths.push(initial_bit_length);
         }
 
         // The code that goes with these lengths is defined in https://www.ietf.org/rfc/rfc1951.txt
-        Ok(Tree(tree))
+        Ok(bit_lengths.try_into()?)
     }
 
     fn selector(&mut self) -> Result<Selector, DecodeError> {
@@ -307,8 +313,12 @@ where
         })
     }
 
+    // TODO: This method needs to take trees as a parameter because we need to call
+    // `Tree::decode()` to figure out when we're done reading.
     fn block_data(&mut self) -> Result<BlockData, DecodeError> {
-        // TODONEXT: Figure out how long the block data is
+        // We have to decode symbols using the Huffman tree until we encounter EOB
+        // TODO: Call `Tree::decode()` (after refactoring its signature as described in the
+        // TODONEXT).
         todo!()
     }
 }
@@ -400,14 +410,17 @@ impl SymbolMap {
 struct Selector(u8);
 
 #[derive(Debug)]
-struct Tree(Vec<u8>);
-
-#[derive(Debug)]
 struct HeaderMagic;
 #[derive(Debug)]
 struct Version;
+
+// TODO: This type is probably going to have to change to hold a `Vec<Symbol>` (where `Symbol` is
+// the output of `Tree::decode()`. The reason for this is we don't know when we're done reading
+// bits until we encounter an `Eob` symbol, so it's pointless (and impossible) to store "unparsed"
+// bits.
 #[derive(Debug)]
 struct BlockData;
+
 #[derive(Debug)]
 struct FooterMagic;
 #[derive(Debug)]
