@@ -70,9 +70,10 @@ pub enum DecodeError {
 ///
 /// # Notes
 ///
-/// TODO: Delete
-/// The origin pointer (index of original row in the sorted rotation block) is appended to the end of the
-/// input data as 3 little-endian bytes.
+/// If the input to this function is wrong, it is possible for this function to produce a row that
+/// is not a rotation of the input. The algorithm is quite sensitive to the encoder and decoder
+/// using the same sort ordering, and if they do not it is possible to get a row that is missing
+/// characters.
 pub(super) fn decode(
     BwtEncoded {
         data,
@@ -86,10 +87,6 @@ pub(super) fn decode(
 
     let origin_pointer: usize = origin_pointer.try_into().unwrap();
     if origin_pointer > data.len() - 1 {
-        // TODONEXT: Something is weird with the origin pointer. We have noticed that it is in the
-        // bzip header, and that we don't seem to use it after parsing it from the header. A unit
-        // test fails right at this check, so investigate what's up with the unused origin pointer
-        // from the header. Maybe even use it.
         return Err(DecodeError::InvalidOriginPointer);
     }
 
@@ -132,6 +129,25 @@ mod tests {
 
     mod decode {
         use super::*;
+
+        /// This tests the example from
+        /// <https://en.wikipedia.org/wiki/Burrows%E2%80%93Wheeler_transform>.
+        #[test]
+        fn banana() {
+            // Wikipedia uses a $, which sorts last in their example. However, in ASCII the $
+            // character will sort first. As a result, we can't use the example as is and have it
+            // work. It just so happens that we can use lower case s as a substitute, because it
+            // will sort first out of this set of characters.
+            let input = BwtEncoded {
+                data: b"BNN^AAsA".to_vec(),
+                origin_pointer: 6.into(),
+            };
+
+            let decoded = decode(&input).unwrap();
+
+            // Note above that we substituted an s for $ so we sort the same as Wikipedia.
+            assert_eq!(decoded, b"^BANANAs");
+        }
 
         #[test]
         fn small() {
