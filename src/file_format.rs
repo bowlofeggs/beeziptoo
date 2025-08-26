@@ -397,7 +397,16 @@ impl StreamBlock {
     pub(crate) fn origin_pointer(&self) -> OriginPointer {
         self.header.orig_ptr
     }
+
+    pub(crate) fn symbol_stack(&self) -> SymbolStack {
+        self.trees.sym_map.symbol_stack()
+    }
 }
+
+/// This is used with the move to front transform.
+#[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub(crate) struct SymbolStack(pub(crate) Vec<u8>);
 
 #[derive(Debug)]
 struct BlockHeader {
@@ -479,6 +488,34 @@ impl SymbolMap {
     fn num_symbols(&self) -> u16 {
         // The spec says that num_syms is num_stack + 2
         (self.l2.iter().map(|v| v.count_ones()).sum::<u32>() + 2) as u16
+    }
+
+    /// Generate the symbol stack, which is used in the move-to-front transform.
+    fn symbol_stack(&self) -> SymbolStack {
+        let mut output = vec![];
+
+        // TODONEXT: This is not correct. We had assumed that the l1 was indexes into l2, but it is
+        // not. l2 isn't going to have any entries that are 0x0000, so a 0 bit in l1 does not
+        // indicate a index to skip in l2, that value just won't be present in l2.
+        for i in 0..=255_u8 {
+            // TODONEXT: When we fix this, we should be able to multiply by 16, rather than divide
+            // like we did here.
+            let row = (i / 16) as usize;
+            if row > self.l2.len() - 1 {
+                break;
+            }
+            let column = 15 - i % 16;
+
+            if 1 << row & self.l1 > 0 {
+                let row = self.l2[row];
+
+                if 1 << column & row > 0 {
+                    output.push(i);
+                }
+            }
+        }
+
+        SymbolStack(output)
     }
 }
 
@@ -674,6 +711,30 @@ mod tests {
             } else {
                 panic!("This should have returned an error.");
             }
+        }
+    }
+
+    /// Test the [`SymbolMap`].
+    mod symbol_map {
+        use super::*;
+
+        /// Test an example from the PDF.
+        #[test]
+        fn pdf_example() {
+            let symbol_map = SymbolMap {
+                l1: 0xdf00,
+                l2: vec![0x4000, 0x8108, 0x0001, 0x0040, 0x8000, 0x5ed9, 0xb900],
+            };
+
+            let stack = symbol_map.symbol_stack();
+
+            assert_eq!(
+                stack,
+                SymbolStack(vec![
+                    0x01, 0x20, 0x27, 0x2c, 0x3f, 0x49, 0x50, 0x61, 0x63, 0x64, 0x65, 0x66, 0x68,
+                    0x69, 0x6b, 0x6c, 0x6f, 0x70, 0x72, 0x73, 0x74, 0x77
+                ])
+            );
         }
     }
 }

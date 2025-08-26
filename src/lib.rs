@@ -110,7 +110,7 @@ where
     for block in &un_file_data {
         let un_huffman_data = huffman::decode(block.symbols());
         let un_rle2 = rle2::decode(&un_huffman_data);
-        let un_move_to_front_data = move_to_front::decode(&un_rle2);
+        let un_move_to_front_data = move_to_front::decode(&un_rle2, block.symbol_stack());
         let un_burrows_wheeler_data = burrows_wheeler::decode(&BwtEncoded::new(
             un_move_to_front_data,
             block.origin_pointer(),
@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn can_we_read() {
-        let bytes = std::fs::read("test.txt.bz2").expect("Cannot read test data");
+        let bytes = std::fs::read("sup.txt.bz2").expect("Cannot read test data");
 
         let mut data = decompress(&bytes[..]).expect("Cannot decompress test data");
 
@@ -138,10 +138,7 @@ mod tests {
         let _bytes = data
             .read_to_end(&mut buffer)
             .expect("Cannot read decompressed data");
-        // TODONEXT: `buffer` ends up being all ones. We don't have the energy to debug this right
-        // now. We're banking on future us having the energy to debug this.
-        //
-        // I'm sorry.
-        assert_eq!(buffer, b"Hello can you hear me?");
+        let expected = b"If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????";
+        assert_eq!(buffer, expected);
     }
 }
