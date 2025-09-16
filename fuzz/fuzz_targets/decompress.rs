@@ -9,6 +9,8 @@ use libfuzzer_sys::fuzz_target;
 
 use beeziptoo::{compress, decompress};
 
+// Ideas:
+// * have the fuzzer randomly choose some cli flags for real bzip2
 fuzz_target!(|data: &[u8]| {
     let mut child = Command::new("bzip2")
         .arg("-c")
