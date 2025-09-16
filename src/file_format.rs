@@ -494,24 +494,25 @@ impl SymbolMap {
     fn symbol_stack(&self) -> SymbolStack {
         let mut output = vec![];
 
-        // TODONEXT: This is not correct. We had assumed that the l1 was indexes into l2, but it is
-        // not. l2 isn't going to have any entries that are 0x0000, so a 0 bit in l1 does not
-        // indicate a index to skip in l2, that value just won't be present in l2.
-        for i in 0..=255_u8 {
-            // TODONEXT: When we fix this, we should be able to multiply by 16, rather than divide
-            // like we did here.
-            let row = (i / 16) as usize;
-            if row > self.l2.len() - 1 {
-                break;
-            }
-            let column = 15 - i % 16;
+        // Notes:
+        // * `unwrap()` is fine here because the underlying `Read` cannot fail (it is a slice).
+        // * we know we'll get exactly 16 bits out of this because we constructed an array from a
+        //   `u16`.
+        let l1 = self.l1.to_be_bytes();
+        let l1_reader = Bitstream::new(&l1[..]).map(Result::unwrap);
 
-            if 1 << row & self.l1 > 0 {
-                let row = self.l2[row];
-
-                if 1 << column & row > 0 {
-                    output.push(i);
-                }
+        for (offset, l2) in l1_reader
+            .enumerate()
+            .filter_map(|(idx, bit)| (bit == Bit::One).then(|| idx * 16))
+            .zip(&self.l2)
+        {
+            let l2 = l2.to_be_bytes();
+            let l2_reader = Bitstream::new(&l2[..]).map(Result::unwrap);
+            for symbol in l2_reader
+                .zip((0..16).into_iter())
+                .filter_map(|(bit, i)| (bit == Bit::One).then(|| offset + i))
+            {
+                output.push(symbol.try_into().unwrap());
             }
         }
 
@@ -722,7 +723,7 @@ mod tests {
         #[test]
         fn pdf_example() {
             let symbol_map = SymbolMap {
-                l1: 0xdf00,
+                l1: 0xbf00,
                 l2: vec![0x4000, 0x8108, 0x0001, 0x0040, 0x8000, 0x5ed9, 0xb900],
             };
 

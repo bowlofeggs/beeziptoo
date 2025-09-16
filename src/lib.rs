@@ -126,11 +126,28 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        io::Write as _,
+        process::{Command, Stdio},
+    };
+
     use super::*;
 
     #[test]
     fn can_we_read() {
-        let bytes = std::fs::read("sup.txt.bz2").expect("Cannot read test data");
+        let peter_piper = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????";
+
+        let mut child = Command::new("bzip2")
+            .args(&["-c"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(peter_piper.as_bytes()).unwrap();
+        }
+        let bytes = child.wait_with_output().unwrap().stdout;
 
         let mut data = decompress(&bytes[..]).expect("Cannot decompress test data");
 
@@ -138,7 +155,6 @@ mod tests {
         let _bytes = data
             .read_to_end(&mut buffer)
             .expect("Cannot read decompressed data");
-        let expected = b"If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????";
-        assert_eq!(buffer, expected);
+        assert_eq!(std::str::from_utf8(&buffer).unwrap(), peter_piper);
     }
 }
