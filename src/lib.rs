@@ -162,10 +162,42 @@ mod tests {
     }
 
     // This was found by the fuzzer.
-    // TODONEXT
     #[test]
     fn four_bytes() {
         let sample = [0x04, 0x00, 0x00, 0x00];
+
+        let mut child = Command::new("bzip2")
+            .arg("-c")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        {
+            let mut stdin = child.stdin.take().unwrap();
+            stdin.write_all(&sample).unwrap();
+        }
+        let bytes = child.wait_with_output().unwrap().stdout;
+
+        let mut data = decompress(&bytes[..]).expect("Cannot decompress test data");
+
+        let mut buffer = vec![];
+        let _bytes = data
+            .read_to_end(&mut buffer)
+            .expect("Cannot read decompressed data");
+        assert_eq!(buffer, sample);
+    }
+
+    // This was found by the fuzzer.
+    //
+    // The root cause was failing to do the MTF decode after parsing the list of tree selector
+    // indices.
+    #[test]
+    fn parsing_selectors() {
+        let sample = [
+            0, 255, 255, 72, 255, 255, 255, 255, 0, 5, 2, 255, 7, 255, 0, 0, 0, 0, 1, 0, 2, 255, 0,
+            255, 255, 255, 255, 196, 251, 255, 183, 0, 0, 0, 182, 5, 0, 0, 255, 183, 0, 0, 0, 182,
+            5, 0, 0, 0,
+        ];
 
         let mut child = Command::new("bzip2")
             .arg("-c")

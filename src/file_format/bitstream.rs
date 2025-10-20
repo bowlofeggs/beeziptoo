@@ -1,4 +1,7 @@
-use std::io::{self, Read};
+use std::{
+    fmt,
+    io::{self, Read},
+};
 
 /// A bit.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -22,6 +25,16 @@ pub(crate) struct Bitstream<R> {
     /// The index of the bit that we are about to handle.
     // This pointer views bit 0 as the rightmost bit and bit 7 as the leftmost bit.
     bit_pointer: u8,
+}
+
+impl<R> fmt::Debug for Bitstream<R> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Bitstream")
+            .field("buffer_size", &self.buffer_size)
+            .field("buffer_pointer", &self.buffer_pointer)
+            .field("bit_pointer", &self.bit_pointer)
+            .finish()
+    }
 }
 
 pub trait FromBits {

@@ -311,10 +311,17 @@ where
         let num_trees: u8 = self.bitstream.get_integer(3)?;
         let num_selectors: u16 = self.bitstream.get_integer(15)?;
 
-        let mut selectors = vec![];
+        let mut pre_mtf_selectors = vec![];
         for _ in 0..num_selectors {
-            selectors.push(self.selector()?);
+            pre_mtf_selectors.push(self.selector()?);
         }
+
+        // TODONEXT: Fix the types here, they're strange.
+        // MTF decode
+        let bytes: Vec<u8> = pre_mtf_selectors.into_iter().map(|s| s.0).collect();
+        let symbol_stack: Vec<u8> = (0..num_trees).collect();
+        let selectors = crate::move_to_front::decode(&bytes, SymbolStack(symbol_stack));
+        let selectors: Vec<Selector> = selectors.into_iter().map(|s| Selector(s)).collect();
 
         let mut trees = vec![];
         for _ in 0..num_trees {
@@ -747,6 +754,35 @@ mod tests {
                     0x69, 0x6b, 0x6c, 0x6f, 0x70, 0x72, 0x73, 0x74, 0x77
                 ])
             );
+        }
+    }
+
+    /// Test the `selector()`
+    mod selector {
+        use super::*;
+
+        #[test]
+        fn zero() {
+            let mut parser = Parser {
+                bitstream: Bitstream::new(&[0x0_u8][..]),
+            };
+            assert_eq!(parser.selector().unwrap().0, 0);
+        }
+
+        #[test]
+        fn one() {
+            let mut parser = Parser {
+                bitstream: Bitstream::new(&[0x80][..]),
+            };
+            assert_eq!(parser.selector().unwrap().0, 1);
+        }
+
+        #[test]
+        fn two() {
+            let mut parser = Parser {
+                bitstream: Bitstream::new(&[0xc0][..]),
+            };
+            assert_eq!(parser.selector().unwrap().0, 2);
         }
     }
 }
