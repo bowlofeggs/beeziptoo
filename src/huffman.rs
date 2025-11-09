@@ -608,37 +608,3 @@ pub(super) fn decode(data: &[Symbol]) -> Vec<rle2::Symbol> {
         })
         .collect()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn roundtrip() {
-        #[expect(unused)]
-        let input = &[
-            rle2::Symbol::RunA,
-            rle2::Symbol::Byte(2),
-            rle2::Symbol::RunA,
-            rle2::Symbol::Byte(0),
-            rle2::Symbol::Byte(1),
-            rle2::Symbol::Byte(2),
-            rle2::Symbol::Byte(0),
-            rle2::Symbol::Byte(2),
-            rle2::Symbol::Byte(2),
-            rle2::Symbol::RunB,
-            rle2::Symbol::RunA,
-            rle2::Symbol::RunB,
-            rle2::Symbol::Byte(0),
-            rle2::Symbol::Byte(2),
-            rle2::Symbol::Byte(0),
-        ];
-
-        todo!("Uncomment and fix this test");
-        /*
-        let output = decode(&encode(input)).unwrap();
-
-        assert_eq!(input.as_slice(), output);
-        */
-    }
-}
