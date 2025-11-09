@@ -1,19 +1,18 @@
 [package]
-name = "beeziptoo"
+name = "beeziptoo-cli"
 version = "0.0.0"
 authors = ["Andrew Halle <me@andrewhalle.dev>", "Randy Barlow <randy@electronsweatshop.com>"]
 license = "GPL-3.0"
 readme = "README.md"
 repository = "https://github.com/bowlofeggs/beeziptoo"
 documentation = "https://docs.rs/beeziptoo"
-description = "Yet another implementation of bzip2."
+description = "Yet another implementation of the bzip2 cli."
 keywords = []
 categories = []
 edition = "2021"
 rust-version = "1.67"
 
 [dependencies]
-thiserror = "1"
-
-[workspace]
-members = ["cli"]
+anyhow = "1"
+beeziptoo = { path = ".." }
+clap = { version = "4", features = ["derive"] }
