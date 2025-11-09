@@ -10,7 +10,7 @@ description = "Yet another implementation of bzip2."
 keywords = []
 categories = []
 edition = "2021"
-rust-version = "1.67"
+rust-version = "1.89"
 
 [dependencies]
 thiserror = "1"
