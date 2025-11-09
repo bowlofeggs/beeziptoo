@@ -355,16 +355,6 @@ where
 
                 symbols.push(symbol);
 
-                // TODONEXT: We tried to decompress moby dick and that failed. The reason it fails
-                // is we get "InvalidFooterMagic". What's happening is we're getting an `Eob`
-                // symbol (we think, incorrectly), then checking that the next integer is a stream
-                // footer (and it isn't). The next integer also isn't the block header, so it's not
-                // another block. It seems to us like we're incorrectly detecting EOB.
-                //
-                // We suspect that we're incorrectly using or parsing (parsing seems more likely)
-                // trees. It could be the case that we're using or parsing selectors incorrectly,
-                // but that seems less likely because we think that all the expected problems with
-                // selectors would be revealed by the example file in the PDF.
                 if let Symbol::Eob = symbol {
                     break 'outer;
                 }
