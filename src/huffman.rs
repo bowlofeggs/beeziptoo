@@ -376,7 +376,7 @@ pub(crate) mod tree {
         let mut bitmap = vec![];
 
         for _ in 0..len {
-            if code % 2 == 0 {
+            if code.is_multiple_of(2) {
                 bitmap.push(false);
             } else {
                 bitmap.push(true);

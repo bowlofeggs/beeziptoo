@@ -244,7 +244,7 @@ where
         {
             let mut l1 = l1.reverse_bits();
             while l1 != 0 {
-                if l1 % 2 != 0 {
+                if !l1.is_multiple_of(2) {
                     l2.push(self.bitstream.get_integer(16)?);
                 }
                 l1 >>= 1;
