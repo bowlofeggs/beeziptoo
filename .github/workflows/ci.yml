@@ -34,7 +34,7 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v2
       - name: Cache compilation assets
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         env:
           cache-name: build-${{ matrix.rust_version }}-${{ matrix.build_type.name }}
         with:
@@ -60,7 +60,7 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v2
       - name: Cache compilation assets
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         env:
           cache-name: clippy
         with:
@@ -81,7 +81,7 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v2
       - name: Cache compilation assets
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         env:
           cache-name: doc
         with:
@@ -121,7 +121,7 @@ jobs:
       - name: Check out branch
         uses: actions/checkout@v2
       - name: Cache compilation assets
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         env:
           cache-name: test-${{ matrix.rust_version }}-${{ matrix.build_type.name }}
         with:
