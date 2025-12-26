@@ -5,6 +5,36 @@
 //!
 //! <https://github.com/dsnet/compress/blob/master/doc/bzip2-format.pdf> was used as a reference
 //! when writing this library.
+//!
+//! # Example usage
+//!
+//! ```rust
+//! use std::{io::{Read, Write}, process::{Command, Stdio}};
+//!
+//! use beeziptoo::decompress;
+//!
+//! let peter_piper = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????";
+//!
+//! let mut child = Command::new("bzip2")
+//!     .arg("-c")
+//!     .stdin(Stdio::piped())
+//!     .stdout(Stdio::piped())
+//!     .spawn()
+//!     .unwrap();
+//! {
+//!     let mut stdin = child.stdin.take().unwrap();
+//!     stdin.write_all(peter_piper.as_bytes()).unwrap();
+//! }
+//! let bytes = child.wait_with_output().unwrap().stdout;
+
+//! let mut data = decompress(&bytes[..]).expect("Cannot decompress test data");
+
+//! let mut buffer = vec![];
+//! let _num_bytes = data
+//!     .read_to_end(&mut buffer)
+//!     .expect("Cannot read decompressed data");
+//! assert_eq!(std::str::from_utf8(&buffer).unwrap(), peter_piper);
+//! ```
 use std::io::{self, Cursor, Read};
 
 use crate::burrows_wheeler::BwtEncoded;
