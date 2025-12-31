@@ -7,7 +7,7 @@ use beeziptoo::{compress, decompress};
 ///
 /// This is marked should_panic because it won't pass until we can ser/de the file format.
 ///
-/// https://github.com/bowlofeggs/beeziptoo/issues/10
+/// https://github.com/beeziptoo/beeziptoo/issues/10
 #[test]
 #[should_panic]
 fn roundtrip() {
